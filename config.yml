@@ -1,0 +1,15 @@
+
+# set the directory where irccloud-search will grab zip files
+zip_dir: ~/Downloads
+
+# set the working directory for irccloud-search to use
+work_dir: /var/tmp/irccloud-search
+
+# set the search tool to use grep | ag
+search_tool: /bin/grep
+
+# set the default channel to run searches against
+channel: '#grayskull'
+
+# uncomment this if you dont' want irccloud-search to automaticall grab zips
+# auto_grab: False

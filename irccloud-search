@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+import os
+import re
+import ast
+import sys
+import glob
+import shutil
+sys.dont_write_bytecode = True
+
+from argparse import ArgumentParser
+from pathlib2 import Path
+from zipfile import ZipFile
+from subprocess import check_call, check_output, CalledProcessError, PIPE
+
+from utils.format import fmt, pfmt
+from utils.output import output
+from utils.newline import windows2unix
+from utils.config import CFG
+
+def mkdir_p(*dirs):
+    for d in dirs:
+        os.makedirs(d.expanduser().as_posix(), exist_ok=True)
+
+def setup(zip_dir, work_dir, verbose):
+    if verbose:
+        pfmt('setup: zip_dir={zip_dir} work_dir={work_dir}')
+    mkdir_p(zip_dir, work_dir, work_dir / 'zips', work_dir / 'logs')
+
+def unpack_zipfile(zipfile, log_dir, verbose):
+    if verbose:
+        pfmt('unpack_zipfile: zipfile={zipfile} log_dir={log_dir}')
+    with ZipFile(zipfile) as zf:
+        for filepath in zf.namelist():
+            filename = os.path.basename(filepath)
+            if not filename:
+                continue
+            if verbose:
+                pfmt('extracting: filename={filename}')
+            src = zf.open(filepath)
+            dst = open(os.path.join(log_dir.as_posix(), filename), 'wb')
+            with src, dst:
+                shutil.copyfileobj(src, dst)
+
+def grab_zips(zip_dir, work_dir, verbose):
+    if verbose:
+        pfmt('grab_zips: zip_dir={zip_dir} work_dir={work_dir}')
+    zip_pattern = 'irccloud-export-*.zip'
+    zipfiles = glob.glob((zip_dir / zip_pattern).expanduser().as_posix())
+    for zipfile in sorted(zipfiles):
+        unpack_zipfile(zipfile, work_dir / 'logs', verbose)
+        shutil.move(zipfile, (work_dir / 'zips').expanduser().as_posix())
+
+def search_logs(work_dir, search_tool, search_args, channel, verbose):
+    if verbose:
+        pfmt('search_logs: work_dir={work_dir} search_tool={search_tool} channel={channel}')
+    if not check_hash(search_tool):
+        pfmt('search_tool={search_tool} not found!')
+        sys.exit(-1)
+    search_args = ' '.join(search_args)
+    target = (work_dir / 'logs' / channel).expanduser().as_posix() + '.txt'
+    cmd = fmt('{search_tool} {search_args} {target}')
+    if verbose:
+        print('cmd =', cmd)
+    output = check_output(cmd, shell=True).decode('utf-8').strip()
+    print(windows2unix(output))
+
+def check_hash(program):
+    try:
+        check_call(fmt('hash {program}'), shell=True, stdout=PIPE, stderr=PIPE)
+        return True
+    except CalledProcessError:
+        return False
+
+if __name__ == '__main__':
+    parser = ArgumentParser()
+    parser.add_argument(
+        '--zip-dir',
+        type=Path,
+        help='default="%(default)s"; change the zip directory')
+    parser.add_argument(
+        '--work-dir',
+        type=Path,
+        help='default="%(default)s"; change the work directory')
+    parser.add_argument(
+        '--search-tool',
+        help='default="%(default)s"; change the search tool')
+    parser.add_argument(
+        '--channel',
+        help='default="%(default)s"; change the channel to search')
+    parser.add_argument(
+        '--grab-zips',
+        action='store_true',
+        help='grab irccloud download zips from zip-dir')
+    parser.add_argument(
+        '--auto-grab',
+        default=True,
+        choices=(True, False),
+        type=ast.literal_eval, #to convert strings like True, False -> python bool
+        const=True,
+        nargs='?',
+        help='automatically grab zips')
+    parser.add_argument(
+        '--verbose',
+        action='store_true',
+        help='turn verbose output')
+    parser.set_defaults(**CFG)
+    ns, rem = parser.parse_known_args()
+    ns.search_args = rem
+    if ns.verbose:
+        output({'config.yml': dict(CFG)})
+        print('ns =', ns)
+    setup(ns.zip_dir, ns.work_dir, ns.verbose)
+
+    if ns.auto_grab or ns.grab_zips:
+        grab_zips(ns.zip_dir, ns.work_dir, ns.verbose)
+    if not ns.grab_zips:
+        search_logs(ns.work_dir, ns.search_tool, ns.search_args, ns.channel, ns.verbose)
