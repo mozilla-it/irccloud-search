@@ -63,8 +63,12 @@ def search_logs(work_dir, search_tool, search_args, channel, verbose):
     cmd = fmt('{search_tool} {search_args} {target}')
     if verbose:
         print('cmd =', cmd)
-    output = check_output(cmd, shell=True).decode('utf-8').strip()
-    print(windows2unix(output))
+    try:
+        output = check_output(cmd, shell=True).decode('utf-8').strip()
+        print(windows2unix(output))
+    except CalledProcessError as cpe:
+        if cpe.returncode != 1:
+            raise cpe
 
 def check_hash(program):
     try:
